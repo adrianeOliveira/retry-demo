@@ -1,6 +1,7 @@
 package br.com.adriane.reactivewebclient.retrydemo;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -10,6 +11,7 @@ import reactor.util.retry.Retry;
 
 import java.time.Duration;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class ExternalConnector {
@@ -25,8 +27,15 @@ public class ExternalConnector {
             .onStatus(HttpStatus::is5xxServerError, response -> Mono.error(new ServiceException("Server error", response.rawStatusCode())))
             .bodyToMono(String.class)
             .retryWhen(Retry.backoff(3, Duration.ofSeconds(2))
-                .filter(throwable -> throwable instanceof ServiceException)
+                .filter(obj -> {
+                    if (obj instanceof ServiceException) {
+                        log.error("Retry attempt");
+                        return true;
+                    }
+                    return false;
+                })
                 .onRetryExhaustedThrow((retryBackoffSpec, retrySignal) -> {
+                    log.error("Retry exhausted");
                     throw new ServiceException("External Service failed to process after max retries", HttpStatus.SERVICE_UNAVAILABLE.value());
                 }));
     }
