@@ -19,29 +19,29 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 class RetryDemoApplicationTests {
 	private ExternalConnector externalConnector;
 
-	private MockWebServer mockExternalService;
+	private MockWebServer mockWebServer;
 
 	@BeforeEach
 	void setup() throws IOException {
 		externalConnector = new ExternalConnector(WebClient.builder()
 			.baseUrl("http://localhost:8090")
 			.build());
-		mockExternalService = new MockWebServer();
-		mockExternalService.start(8090);
+		mockWebServer = new MockWebServer();
+		mockWebServer.start(8090);
 	}
 
 	@AfterEach
 	void tearDown() throws IOException {
-		mockExternalService.shutdown();
+		mockWebServer.shutdown();
 	}
 
 	@Test
 	void givenExternalServiceReturnsError_whenGettingData_thenRetryAndReturnResponse() throws Exception {
 
-		mockExternalService.enqueue(new MockResponse().setResponseCode(SERVICE_UNAVAILABLE.code()));
-		mockExternalService.enqueue(new MockResponse().setResponseCode(SERVICE_UNAVAILABLE.code()));
-		mockExternalService.enqueue(new MockResponse().setResponseCode(SERVICE_UNAVAILABLE.code()));
-		mockExternalService.enqueue(new MockResponse().setBody("stock data"));
+		mockWebServer.enqueue(new MockResponse().setResponseCode(SERVICE_UNAVAILABLE.code()));
+		mockWebServer.enqueue(new MockResponse().setResponseCode(SERVICE_UNAVAILABLE.code()));
+		mockWebServer.enqueue(new MockResponse().setResponseCode(SERVICE_UNAVAILABLE.code()));
+		mockWebServer.enqueue(new MockResponse().setBody("stock data"));
 
 		StepVerifier.create(externalConnector.getData("ABC"))
 			.expectNextMatches(response -> response.equals("stock data"))
@@ -50,9 +50,24 @@ class RetryDemoApplicationTests {
 		verifyNumberOfGetRequests(4);
 	}
 
+	@Test
+	void givenExternalServiceReturnsError_whenGettingData_thenRetryAndReturnError() throws Exception {
+
+		mockWebServer.enqueue(new MockResponse().setResponseCode(SERVICE_UNAVAILABLE.code()));
+		mockWebServer.enqueue(new MockResponse().setResponseCode(SERVICE_UNAVAILABLE.code()));
+		mockWebServer.enqueue(new MockResponse().setResponseCode(SERVICE_UNAVAILABLE.code()));
+		mockWebServer.enqueue(new MockResponse().setResponseCode(SERVICE_UNAVAILABLE.code()));
+
+		StepVerifier.create(externalConnector.getData("ABC"))
+			.expectError()
+			.verify();
+
+		verifyNumberOfGetRequests(4);
+	}
+
 	private void verifyNumberOfGetRequests(int times) throws Exception {
 		for (int i = 0; i < times; i++) {
-			RecordedRequest recordedRequest = mockExternalService.takeRequest();
+			RecordedRequest recordedRequest = mockWebServer.takeRequest();
 			assertThat(recordedRequest.getMethod()).isEqualTo("GET");
 			assertThat(recordedRequest.getPath()).isEqualTo("/data/ABC");
 		}
